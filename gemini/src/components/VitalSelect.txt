@@ -7,8 +7,9 @@
       aria-haspopup="listbox"
       :aria-expanded="isOpen"
     >
-      <span v-if="hasValue">{{ selectedText }}</span>
-      <span v-else class="vital-select-placeholder">{{ placeholder }}</span>
+      <span :class="{ 'vital-select-placeholder': displayInfo.isPlaceholder }">
+        {{ displayInfo.text }}
+      </span>
 
       <svg
         class="vital-select-chevron"
@@ -27,7 +28,27 @@
 
     <transition name="fade">
       <div v-if="isOpen" class="vital-select-dropdown" role="listbox">
-        <div class="vital-select-search-wrapper">
+        <div class="vital-select-header">
+          <!-- Modification: Le bouton est maintenant conditionnel et à gauche de la recherche -->
+          <div v-if="multiple" class="vital-select-actions">
+            <VitalButton
+              v-if="!areAllFilteredSelected"
+              size="small"
+              @click.stop="selectAll"
+              title="Cocher tout"
+            >
+              ✓
+            </VitalButton>
+            <VitalButton
+              v-else
+              size="small"
+              variant="secondary"
+              @click.stop="deselectAll"
+              title="Décocher tout"
+            >
+              ✗
+            </VitalButton>
+          </div>
           <input
             type="text"
             v-model="searchTerm"
@@ -35,18 +56,6 @@
             class="vital-select-search-input"
             @click.stop
           />
-        </div>
-
-        <div v-if="multiple" class="vital-select-actions">
-          <VitalButton size="small" @click.stop="selectAll"
-            >Cocher tout</VitalButton
-          >
-          <VitalButton
-            size="small"
-            variant="secondary"
-            @click.stop="deselectAll"
-            >Décocher tout</VitalButton
-          >
         </div>
 
         <ul class="vital-select-options">
@@ -113,14 +122,6 @@ const isOpen = ref(false);
 const searchTerm = ref('');
 const selectRef = ref(null);
 
-const hasValue = computed(() => {
-    if (props.multiple) {
-        return Array.isArray(props.modelValue) && props.modelValue.length > 0;
-    }
-    const mv = props.modelValue;
-    return mv !== null && mv !== undefined && mv !== '';
-});
-
 const filteredOptions = computed(() => {
   if (!searchTerm.value) {
     return props.options;
@@ -130,26 +131,46 @@ const filteredOptions = computed(() => {
   );
 });
 
-const selectedText = computed(() => {
+// Modification: Ajout d'une computed pour vérifier si tout est coché
+const areAllFilteredSelected = computed(() => {
+  if (!props.multiple || filteredOptions.value.length === 0) {
+    return false;
+  }
+  const filteredValues = filteredOptions.value.map(opt => opt.value);
+  const selectedValues = Array.isArray(props.modelValue) ? props.modelValue : [];
+  return filteredValues.every(val => selectedValues.includes(val));
+});
+
+
+// Logique d'affichage unifiée pour le trigger
+const displayInfo = computed(() => {
   const { multiple, modelValue, options, placeholder } = props;
+  const info = { text: placeholder, isPlaceholder: true };
 
   if (multiple) {
-    if (!Array.isArray(modelValue) || modelValue.length === 0) {
-      return placeholder;
+    if (Array.isArray(modelValue) && modelValue.length > 0) {
+      info.isPlaceholder = false;
+      if (modelValue.length === 1) {
+        const option = options.find(opt => opt.value === modelValue[0]);
+        if (option) {
+          info.text = option.text;
+        } else {
+          info.isPlaceholder = true; // Si l'option n'est pas trouvée, on affiche le placeholder
+        }
+      } else {
+        info.text = `${modelValue.length} options sélectionnées`;
+      }
     }
-    
-    const selectedCount = modelValue.length;
-    if (selectedCount === 1) {
-      const selectedOption = options.find(opt => opt.value === modelValue[0]);
-      return selectedOption ? selectedOption.text : placeholder;
+  } else { // Sélection unique
+    const option = options.find(opt => opt.value === modelValue);
+    if (option) {
+      info.text = option.text;
+      info.isPlaceholder = false;
     }
-    return `${selectedCount} options sélectionnées`;
-  } 
-  
-  // Logique pour la sélection unique
-  const selectedOption = options.find(opt => opt.value === modelValue);
-  return selectedOption ? selectedOption.text : placeholder;
+  }
+  return info;
 });
+
 
 function isSelected(option) {
   if (props.multiple) {
@@ -237,6 +258,7 @@ onUnmounted(() => {
   text-align: left;
   transition: border-color 0.2s, box-shadow 0.2s;
   min-height: 40px;
+  color: #343a40;
 }
 .vital-select-trigger:focus,
 .vital-select-trigger:focus-visible {
@@ -271,10 +293,20 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
 }
-.vital-select-search-wrapper {
+
+/* Modification: Styles pour le nouvel header */
+.vital-select-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.5rem;
     border-bottom: 1px solid #e4e7ed;
 }
+
+.vital-select-actions {
+  flex-shrink: 0;
+}
+
 .vital-select-search-input {
     width: 100%;
     padding: 0.5rem 0.75rem;
@@ -282,17 +314,11 @@ onUnmounted(() => {
     border-radius: 6px;
     font-size: 0.9rem;
     box-sizing: border-box;
+    flex-grow: 1; /* Permet à la recherche de prendre l'espace restant */
 }
 .vital-select-search-input:focus {
     outline: none;
     border-color: #42b983;
-}
-.vital-select-actions {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    border-bottom: 1px solid #e4e7ed;
-    background-color: #f8f9fa;
 }
 .vital-select-options {
   margin: 0;
@@ -320,7 +346,6 @@ onUnmounted(() => {
     background-color: #f0fdf4;
 }
 .vital-select-checkbox {
-    /* Pour que le clic sur le 'li' fonctionne sans interférence */
     pointer-events: none;
     width: 16px;
     height: 16px;
