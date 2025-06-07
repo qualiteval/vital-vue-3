@@ -44,9 +44,9 @@
 </template>
 
 <script setup>
-import VitalDocumentation from './VitalDocumentation.vue';
-import VitalButton from './VitalButton.vue';
-import VitalButtons from './VitalButtons.vue';
+import VitalDocumentation from '../components/VitalDocumentation.vue';
+import VitalButton from '../components/VitalButton.vue';
+import VitalButtons from '../components/VitalButtons.vue';
 
 function handleButtonClick(buttonName) {
   alert(`Action : "${buttonName}"`);

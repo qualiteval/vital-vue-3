@@ -1,0 +1,1 @@
+Vu que Google Gemini ne sait pas lire les fichiers Vue (.vue), je les met ici en Texte (.txt).

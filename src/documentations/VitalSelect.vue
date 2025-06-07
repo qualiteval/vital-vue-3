@@ -61,8 +61,8 @@
 <script setup>
 import { ref } from 'vue';
 
-import VitalDocumentation from './VitalDocumentation.vue';
-import VitalSelect from './VitalSelect.vue';
+import VitalDocumentation from '../components/VitalDocumentation.vue';
+import VitalSelect from '../components/VitalSelect.vue';
 
 const selectedFramework = ref(null);
 const frameworkOptions = ref([
