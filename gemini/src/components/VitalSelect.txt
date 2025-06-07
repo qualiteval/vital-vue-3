@@ -7,7 +7,7 @@
       aria-haspopup="listbox"
       :aria-expanded="isOpen"
     >
-      <span v-if="modelValue">{{ selectedOptionText }}</span>
+      <span v-if="hasValue">{{ selectedText }}</span>
       <span v-else class="vital-select-placeholder">{{ placeholder }}</span>
 
       <svg
@@ -26,31 +26,66 @@
     </button>
 
     <transition name="fade">
-      <ul v-if="isOpen" class="vital-select-options" role="listbox">
-        <li
-          v-for="option in options"
-          :key="option.value"
-          class="vital-select-option"
-          :class="{
-            'vital-select-option--selected': modelValue === option.value,
-          }"
-          @click="selectOption(option)"
-          role="option"
-          :aria-selected="modelValue === option.value"
-        >
-          {{ option.text }}
-        </li>
-      </ul>
+      <div v-if="isOpen" class="vital-select-dropdown" role="listbox">
+        <div class="vital-select-search-wrapper">
+          <input
+            type="text"
+            v-model="searchTerm"
+            placeholder="Rechercher..."
+            class="vital-select-search-input"
+            @click.stop
+          />
+        </div>
+
+        <div v-if="multiple" class="vital-select-actions">
+          <VitalButton size="small" @click.stop="selectAll"
+            >Cocher tout</VitalButton
+          >
+          <VitalButton
+            size="small"
+            variant="secondary"
+            @click.stop="deselectAll"
+            >Décocher tout</VitalButton
+          >
+        </div>
+
+        <ul class="vital-select-options">
+          <li
+            v-for="option in filteredOptions"
+            :key="option.value"
+            class="vital-select-option"
+            :class="{
+              'vital-select-option--selected': isSelected(option),
+            }"
+            @click="selectOption(option)"
+            role="option"
+            :aria-selected="isSelected(option)"
+          >
+            <input
+              v-if="multiple"
+              type="checkbox"
+              :checked="isSelected(option)"
+              class="vital-select-checkbox"
+              tabindex="-1"
+            />
+            <span>{{ option.text }}</span>
+          </li>
+          <li v-if="filteredOptions.length === 0" class="vital-select-no-options">
+            Aucune option trouvée.
+          </li>
+        </ul>
+      </div>
     </transition>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import VitalButton from './VitalButton.vue';
 
 const props = defineProps({
   modelValue: {
-    type: [String, Number],
+    type: [String, Number, Array],
     default: null,
   },
   options: {
@@ -66,32 +101,110 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  multiple: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['update:modelValue']);
 
 const isOpen = ref(false);
+const searchTerm = ref('');
 const selectRef = ref(null);
 
-const selectedOptionText = computed(() => {
-  const selected = props.options.find((opt) => opt.value === props.modelValue);
-  return selected ? selected.text : props.placeholder;
+const hasValue = computed(() => {
+    if (props.multiple) {
+        return Array.isArray(props.modelValue) && props.modelValue.length > 0;
+    }
+    const mv = props.modelValue;
+    return mv !== null && mv !== undefined && mv !== '';
 });
+
+const filteredOptions = computed(() => {
+  if (!searchTerm.value) {
+    return props.options;
+  }
+  return props.options.filter((option) =>
+    option.text.toLowerCase().includes(searchTerm.value.toLowerCase())
+  );
+});
+
+const selectedText = computed(() => {
+  const { multiple, modelValue, options, placeholder } = props;
+
+  if (multiple) {
+    if (!Array.isArray(modelValue) || modelValue.length === 0) {
+      return placeholder;
+    }
+    
+    const selectedCount = modelValue.length;
+    if (selectedCount === 1) {
+      const selectedOption = options.find(opt => opt.value === modelValue[0]);
+      return selectedOption ? selectedOption.text : placeholder;
+    }
+    return `${selectedCount} options sélectionnées`;
+  } 
+  
+  // Logique pour la sélection unique
+  const selectedOption = options.find(opt => opt.value === modelValue);
+  return selectedOption ? selectedOption.text : placeholder;
+});
+
+function isSelected(option) {
+  if (props.multiple) {
+    return Array.isArray(props.modelValue) && props.modelValue.includes(option.value);
+  }
+  return props.modelValue === option.value;
+}
 
 function toggleDropdown() {
   if (!props.disabled) {
     isOpen.value = !isOpen.value;
+    if (!isOpen.value) {
+      searchTerm.value = '';
+    }
   }
 }
 
 function selectOption(option) {
-  emit('update:modelValue', option.value);
-  isOpen.value = false;
+  if (props.disabled) return;
+
+  if (props.multiple) {
+    const currentValue = Array.isArray(props.modelValue) ? [...props.modelValue] : [];
+    const index = currentValue.indexOf(option.value);
+
+    if (index > -1) {
+      currentValue.splice(index, 1);
+    } else {
+      currentValue.push(option.value);
+    }
+    emit('update:modelValue', currentValue);
+  } else {
+    emit('update:modelValue', option.value);
+    isOpen.value = false;
+    searchTerm.value = '';
+  }
 }
+
+function selectAll() {
+    const allVisibleValues = filteredOptions.value.map(opt => opt.value);
+    const currentValues = Array.isArray(props.modelValue) ? [...props.modelValue] : [];
+    const newValues = [...new Set([...currentValues, ...allVisibleValues])];
+    emit('update:modelValue', newValues);
+}
+
+function deselectAll() {
+    const allVisibleValues = filteredOptions.value.map(opt => opt.value);
+    const newValues = (Array.isArray(props.modelValue) ? props.modelValue : []).filter(v => !allVisibleValues.includes(v));
+    emit('update:modelValue', newValues);
+}
+
 
 function handleClickOutside(event) {
   if (selectRef.value && !selectRef.value.contains(event.target)) {
     isOpen.value = false;
+    searchTerm.value = '';
   }
 }
 
@@ -123,6 +236,7 @@ onUnmounted(() => {
   cursor: pointer;
   text-align: left;
   transition: border-color 0.2s, box-shadow 0.2s;
+  min-height: 40px;
 }
 .vital-select-trigger:focus,
 .vital-select-trigger:focus-visible {
@@ -138,27 +252,59 @@ onUnmounted(() => {
   height: 20px;
   color: #909399;
   transition: transform 0.2s ease-in-out;
+  flex-shrink: 0;
 }
 .vital-select-chevron--open {
   transform: rotate(180deg);
 }
-.vital-select-options {
+.vital-select-dropdown {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   width: 100%;
-  margin: 0;
-  padding: 0.5rem 0;
-  list-style: none;
   background-color: white;
   border: 1px solid #e4e7ed;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   z-index: 10;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.vital-select-search-wrapper {
+    padding: 0.5rem;
+    border-bottom: 1px solid #e4e7ed;
+}
+.vital-select-search-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+}
+.vital-select-search-input:focus {
+    outline: none;
+    border-color: #42b983;
+}
+.vital-select-actions {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-bottom: 1px solid #e4e7ed;
+    background-color: #f8f9fa;
+}
+.vital-select-options {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   max-height: 200px;
   overflow-y: auto;
 }
 .vital-select-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   padding: 0.6rem 0.9rem;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -169,7 +315,21 @@ onUnmounted(() => {
 .vital-select-option--selected {
   color: #42b983;
   font-weight: 600;
-  background-color: #f0fdf4;
+}
+.vital-select-option--selected:not(:hover) {
+    background-color: #f0fdf4;
+}
+.vital-select-checkbox {
+    /* Pour que le clic sur le 'li' fonctionne sans interférence */
+    pointer-events: none;
+    width: 16px;
+    height: 16px;
+    accent-color: #42b983;
+}
+.vital-select-no-options {
+    padding: 0.6rem 0.9rem;
+    color: #a8abb2;
+    text-align: center;
 }
 .vital-select.disabled .vital-select-trigger {
   background-color: #f5f7fa;
